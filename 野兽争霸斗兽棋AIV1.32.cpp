@@ -33,7 +33,7 @@ const int HASH_PV = 3;         // PV节点的置换表项
 const int RANDOM_MASK = 3;     // 随机性分值
 
 int t2=1000,depth=99999999,t,t3;//时间控制和深度控制
-bool fenxi=0,player[2],turn,ranghu=0;
+bool fenxi=0,player[2],turn,ranghu=0,analyzing=0; 
 
 // 判断棋子是否在棋盘中的数组
 static const char ccInBoard[256] = {
@@ -874,12 +874,12 @@ bool PositionStruct::RepWuSong(void) const {
 bool PositionStruct::RepStatus(void) const {
 	if(RepWuLai())
 	{
-		printf("违例：无赖循环\n");
+		if(!analyzing) printf("违例：无赖循环\n");
 		return 1;
 	}
 	if(RepWuSong())
 	{
-		printf("违例：长捉\n");
+		if(!analyzing) printf("违例：长捉\n");
 		return 1;
 	}
 	return 0;
@@ -1440,6 +1440,7 @@ static int SearchMain(void) {
   }
   
 
+	analyzing=1;
   // 迭代加深过程
   for (i = 1; i <= depth; i ++) {
 	t=clock();
@@ -1453,6 +1454,7 @@ static int SearchMain(void) {
       break;
     }
   }
+  analyzing=0;
   return Search.mvResult;
 }
 // 电脑回应一步棋
