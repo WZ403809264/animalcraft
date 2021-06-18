@@ -1,4 +1,4 @@
-# 野兽争霸斗兽棋AI V1.31
+# 野兽争霸斗兽棋AI V1.32
 
 ![](https://cloud.githubusercontent.com/assets/6532225/18883792/44b26bbe-8517-11e6-8f14-896c01d77724.png)
 
