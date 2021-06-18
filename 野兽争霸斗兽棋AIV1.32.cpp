@@ -26,7 +26,7 @@ const int BAN_VALUE = MATE_VALUE - 100; // 长将判负的分值，低于该值�
 const int WIN_VALUE = MATE_VALUE - 200; // 搜索出胜负的分值界限，超出此值就说明已经搜索出杀棋了
 const int NULL_MARGIN = 400;   // 空步裁剪的子力边界
 const int NULL_DEPTH = 2;      // 空步裁剪的裁剪深度
-const int HASH_SIZE = 1 << 25; // 置换表大小
+const int HASH_SIZE = 1<<26; // 置换表大小
 const int HASH_ALPHA = 1;      // ALPHA节点的置换表项
 const int HASH_BETA = 2;       // BETA节点的置换表项
 const int HASH_PV = 3;         // PV节点的置换表项
@@ -821,33 +821,18 @@ bool PositionStruct::IsMate(void) {
 	if(((ucpcSquares[99]>=8&&ucpcSquares[99]<=23)&&!sdPlayer)||((ucpcSquares[107]>=8&&ucpcSquares[107]<=23)&&sdPlayer)) return 1;
 	return 0;
 }
-
-/*
-// 检测重复局面
-bool PositionStruct::RepStatus(void) const {
-	if(player[!sdPlayer]==0) return 0;
-	int count[24];
-	memset(count,0,sizeof(count));
-	for(int i=nMoveNum-1;i>=0;i-=2)
-	{
-		count[mvsList[i].wpc]++;
-		if(count[mvsList[i].wpc]>=7) return 1;
-		if(i==0||i==1) return 0;
-		if(mvsList[i].wpc!=mvsList[i-2].wpc) return 0;
-	}
-	return 0;
-}*/
 bool PositionStruct::RepWuLai(void) const {
+	if(nMoveNum<=15) return 0;
 	int count[24][256];
 	memset(count,0,sizeof(count));
-	for(int i=nMoveNum-3;i>=nMoveNum-16&&i>=0;i-=2)
+	for(int i=nMoveNum-3;i>=nMoveNum-16&&i>=1;i-=2)
 	{
 		if(INXIANJING(DST(mvsList[i].wmv),16)||INXIANJING(DST(mvsList[i].wmv),8))
 		{
 			return 0;
 		}
 		count[mvsList[i].wpc][DST(mvsList[i].wmv)]++;
-		if(count[mvsList[i].wpc][DST(mvsList[i].wmv)]>=3&&DST(mvsList[i].wmv)==DST(mvsList[nMoveNum].wmv))
+		if(count[mvsList[i].wpc][DST(mvsList[i].wmv)]>=3&&DST(mvsList[i].wmv)==DST(mvsList[nMoveNum-1].wmv))
 		{
 			return 1;
 		}
@@ -855,6 +840,7 @@ bool PositionStruct::RepWuLai(void) const {
 	return 0;
 }
 bool PositionStruct::RepWuSong(void) const {
+	if(nMoveNum<=35) return 0;
 	int animal=mvsList[nMoveNum-1].wpc,dst=DST(mvsList[nMoveNum-1].wmv),count[6],qigenum=0;
 	memset(count,0,sizeof(count));
 	for(int i=nMoveNum-3;i>=nMoveNum-36&&i>=0;i-=2)
@@ -886,8 +872,16 @@ bool PositionStruct::RepWuSong(void) const {
 	return 0;
 }
 bool PositionStruct::RepStatus(void) const {
-	if(RepWuLai()) return 1;
-	if(RepWuSong()) return 1;
+	if(RepWuLai())
+	{
+		printf("违例：无赖循环\n");
+		return 1;
+	}
+	if(RepWuSong())
+	{
+		printf("违例：长捉\n");
+		return 1;
+	}
 	return 0;
 }
 
@@ -1104,10 +1098,7 @@ static int SearchQuiesc(int vlAlpha, int vlBeta) {
   // 一个静态搜索分为以下几个阶段
 
   
-  // 2. 到达极限深度就返回局面评价
-  if (pos.nDistance == LIMIT_DEPTH) {
-    return pos.Evaluate();
-  }
+  if(pos.IsMate()) return -MATE_VALUE;
 
   // 3. 初始化最佳值
   vlBest = -MATE_VALUE; // 这样可以知道，是否一个走法都没走过(杀棋)
@@ -1191,6 +1182,7 @@ static int SearchCut(int vlBeta, int nDepth, bool bNoNull = false) {
     	return vl;
     }
   }
+  //if(turn&&SearchCut(vlBeta-1, nDepth/2)>=vlBeta) nDepth/=2; 
 MoveSort.Init(mvHash);
 
   // 8. 按照"MoveSortStruct::NextFull()"例程的着法顺序逐一搜索；
@@ -1239,10 +1231,6 @@ static int SearchFull(int vlAlpha, int vlBeta, int nDepth, bool bNoNull = 0) {
   if(pos.IsMate()) return -MATE_VALUE;
   if (nDepth <= 0) {
    return SearchQuiesc(vlAlpha, vlBeta);
-  }
-   // 1-2. 到达极限深度就返回局面评价
-  if (pos.nDistance == LIMIT_DEPTH) {
-    return pos.Evaluate();
   }
   // 1-3. 尝试置换表裁剪，并得到置换表走法
   vl = ProbeHash(vlAlpha, vlBeta, nDepth, mvHash);
@@ -1353,7 +1341,7 @@ inline void DrawBoard(void) {
   }
   printf("   1 2 3 4 5 6 7 8 9\n");
   }
-  if(ranghu) printf("第%d回合\n",(pos.nMoveNum+1)/2);
+  printf("第%d回合\n",(pos.nMoveNum+1)/2);
 }
 int nGenMoves,mvs[MAX_GEN_MOVES];
 // 根节点的Alpha-Beta搜索过程
@@ -1479,14 +1467,14 @@ static int ResponseMove(void) {
   if (pos.IsMate()) {
 				DrawBoard();
     // 如果分出胜负，那么播放胜负的声音，并且弹出不带声音的提示框
-          printf("请再接再厉！\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t");
+          printf("请再接再厉！");
 	Xqwl.bGameOver = 1;
 	return 2;
   }else {
   	
         	if(pos.RepStatus())
         	{
-          printf("祝贺你取得胜利！\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t");
+          printf("祝贺你取得胜利！");
 				DrawBoard();
           Xqwl.bGameOver = 1;
           return 2;
@@ -1517,16 +1505,14 @@ static int ClickSquare(int sq) {
         Xqwl.sqSelected = 0;
         if (pos.IsMate()) {
 				DrawBoard();
-          printf("祝贺你取得胜利！\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t");
+          printf("祝贺你取得胜利！");
           Xqwl.bGameOver = 1;
           return 1;
         } else {
         	if(pos.RepStatus())
         	{
-          printf("请再接再厉！\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t");
-				DrawBoard();
-          Xqwl.bGameOver = 1;
-          return 2;
+        		pos.UndoMakeMove();
+        		can=0; 
 			}
           return 0;
           //ResponseMove();
@@ -1557,8 +1543,8 @@ int main()
 	while(a!='E'&&a!='e')
 	{
 		system("cls");
-		system("title 野兽争霸斗兽棋AI(V1.31) QQ:403809264");
-		printf("野兽争霸斗兽棋AI V1.31\n");
+		system("title 野兽争霸斗兽棋AI(V1.32) QQ:403809264");
+		printf("野兽争霸斗兽棋AI V1.32\n");
 		if(fenxi) printf("请选择功能：\nA  我当红棋\nB  我当黑棋\nC  双人对战\nD  电脑对战\nE  退出\nF  设置电脑时间(%d毫秒)\nG  设置计算深度(%d层)\nH  隐藏分析\n",t2,depth);
 		else printf("请选择功能：\nA  我当红棋\nB  我当黑棋\nC  双人对战\nD  电脑对战\nE  退出\nF  设置电脑时间(%d毫秒)\nG  设置计算深度(%d层)\nH  显示分析\n",t2,depth);
 		if(Xqwl.bFlipped) printf("I  翻转棋盘(目前红方在左)\n");
