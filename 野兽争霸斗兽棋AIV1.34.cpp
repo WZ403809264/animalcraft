@@ -22,7 +22,6 @@ const int PIECE_MOUSE = 7;
 const int MAX_GEN_MOVES = 35; // 最大的生成走法数
 const int MAX_MOVES = 1000;     // 最大的历史走法数
 const int MATE_VALUE = 10000;  // 最高分值，即将死的分值
-const int BAN_VALUE = MATE_VALUE - 100; // 长将判负的分值，低于该值将不写入置换表
 const int WIN_VALUE = MATE_VALUE - 200; // 搜索出胜负的分值界限，超出此值就说明已经搜索出杀棋了
 const int NULL_MARGIN = 400;   // 空步裁剪的子力边界
 const int NULL_DEPTH = 2;      // 空步裁剪的裁剪深度
@@ -655,11 +654,12 @@ struct PositionStruct {
   }
   // 生成所有走法，如果"bCapture"为"1"则只生成吃子走法
   int GenerateMoves(int *mvs, bool bCapture = 0);
+  int GenerateMovesNoCap(int *mvs);
   bool LegalMove(int mv);               // 判断走法是否合理
   bool IsMate(void);
-  bool RepWuLai(void) const;
-  bool RepWuSong(void) const;
-  bool RepStatus(void) const;
+  bool RepWuLai(void);
+  bool RepWuSong(void);
+  bool RepStatus(void);
   bool NullOkay(void) const {                 // 判断是否允许空步裁剪
     return (sdPlayer == 0 ? vlWhite : vlBlack) > NULL_MARGIN;
   }
@@ -770,6 +770,49 @@ int PositionStruct::GenerateMoves(int *mvs, bool bCapture){
   return nGenMoves;
 }
 
+// 生成所有走法，如果"bCapture"为"1"则只生成吃子走法
+int PositionStruct::GenerateMovesNoCap(int *mvs){
+  int i, j, nGenMoves, nDelta, sqSrc, sqDst;
+  int pcSelfSide, pcOppSide, pcSrc, pcDst;
+  // 生成所有走法，需要经过以下几个步骤：
+
+  nGenMoves = 0;
+  pcSelfSide = SIDE_TAG(sdPlayer);
+  pcOppSide = OPP_SIDE_TAG(sdPlayer);
+  for (sqSrc = 0; sqSrc < 256; sqSrc ++) {
+  	if(!IN_BOARD(sqSrc)) continue;
+    // 1. 找到一个本方棋子，再做以下判断：
+    pcSrc = ucpcSquares[sqSrc];
+    if ((pcSrc & pcSelfSide) == 0) {
+      continue;
+    }
+    // 2. 根据棋子确定走法
+    for(int delta=0;delta<=3;delta++)
+    {
+    	sqDst=sqSrc+ccDelta[delta];
+    	if(ucpcSquares[sqDst]) continue;
+    	if(!IN_BOARD(sqDst)||INSHOUXUE(sqDst,pcSelfSide)) continue;
+    	if(!CanMove(sqSrc,sqDst))continue;
+        if ((pcDst & pcSelfSide) == 0) {
+          mvs[nGenMoves] = MOVE(sqSrc, sqDst);
+          nGenMoves ++;
+        }
+	}
+	for(int delta=0;delta<=3;delta++)
+	{
+    	sqDst=sqSrc+ccJumpDelta[delta];
+    	if(ucpcSquares[sqDst]) continue;
+    	if(!IN_BOARD(sqDst)||INSHOUXUE(sqDst,pcSelfSide)) continue;
+    	if(!CanJump(sqSrc,sqDst))continue;
+        if ((pcDst & pcSelfSide) == 0) {
+          mvs[nGenMoves] = MOVE(sqSrc, sqDst);
+          nGenMoves ++;
+        }
+	}
+  }
+  return nGenMoves;
+}
+
 // 判断走法是否合理
 bool PositionStruct::LegalMove(int mv){
   int sqSrc, sqDst, sqPin;
@@ -821,8 +864,40 @@ bool PositionStruct::IsMate(void) {
 	if(((ucpcSquares[99]>=8&&ucpcSquares[99]<=23)&&!sdPlayer)||((ucpcSquares[107]>=8&&ucpcSquares[107]<=23)&&sdPlayer)) return 1;
 	return 0;
 }
-bool PositionStruct::RepWuLai(void) const {
+bool PositionStruct::RepWuLai(void){
 	if(nMoveNum<=15) return 0;
+	
+	int sqSrc,sqDst=SRC(mvsList[nMoveNum-1].wmv);
+	int delta;
+	int pcSelfSide, pcOppSide, pcSrc, pcDst;
+	pcSelfSide = SIDE_TAG(sdPlayer);
+	pcOppSide = OPP_SIDE_TAG(sdPlayer);
+	/*
+    for(int delta=0;delta<=3;delta++)
+    {
+    	sqSrc=sqDst+ccDelta[delta];
+    	if(ucpcSquares[sqSrc]==0||!IN_BOARD(sqSrc)||INXIANJING(sqSrc,pcSelfSide)||INXIANJING(sqSrc,pcOppSide)||INSHOUXUE(sqSrc,pcSelfSide)||INSHOUXUE(sqSrc,pcOppSide)||!CanMove(sqSrc,sqDst)) continue;
+    	pcSrc = ucpcSquares[sqSrc];
+    	pcDst = ucpcSquares[sqDst];
+        if ((pcDst & pcOppSide) != 0  && CanEat(sqSrc,sqDst) ){
+        	return 0;
+        }
+	}
+	for(int delta=0;delta<=3;delta++)
+	{
+	    sqDst=sqDst+ccJumpDelta[delta];
+	    if(ucpcSquares[sqSrc]==0||!IN_BOARD(sqSrc)||INXIANJING(sqSrc,pcSelfSide)||INXIANJING(sqSrc,pcOppSide)||INSHOUXUE(sqSrc,pcSelfSide)||INSHOUXUE(sqSrc,pcOppSide)||!CanJump(sqSrc,sqDst)) continue;
+	    pcSrc = ucpcSquares[sqSrc];
+	    pcDst = ucpcSquares[sqDst];
+	    if ((pcDst & pcOppSide) != 0  && CanEat(sqSrc,sqDst) ){
+	       	return 0;
+	    }
+	}
+	*/
+	
+	
+	
+	
 	int count[24][256];
 	memset(count,0,sizeof(count));
 	for(int i=nMoveNum-3;i>=nMoveNum-16&&i>=1;i-=2)
@@ -839,7 +914,7 @@ bool PositionStruct::RepWuLai(void) const {
 	}
 	return 0;
 }
-bool PositionStruct::RepWuSong(void) const {
+bool PositionStruct::RepWuSong(void){
 	if(nMoveNum<=35) return 0;
 	int animal=mvsList[nMoveNum-1].wpc,dst=DST(mvsList[nMoveNum-1].wmv),count[6],qigenum=0;
 	memset(count,0,sizeof(count));
@@ -871,7 +946,7 @@ bool PositionStruct::RepWuSong(void) const {
 	}
 	return 0;
 }
-bool PositionStruct::RepStatus(void) const {
+bool PositionStruct::RepStatus(void){
 	if(RepWuLai())
 	{
 		if(!analyzing) printf("违例：无赖循环\n");
@@ -936,15 +1011,9 @@ static int ProbeHash(int vlAlpha, int vlBeta, int nDepth, int &mv) {
   mv = hsh.wmv;
   bMate = 0;
   if (hsh.svl > WIN_VALUE) {
-    if (hsh.svl < BAN_VALUE) {
-      return -MATE_VALUE; // 可能导致搜索的不稳定性，立刻退出，但最佳着法可能拿到
-    }
     hsh.svl -= pos.nDistance;
     bMate = 1;
   } else if (hsh.svl < -WIN_VALUE) {
-    if (hsh.svl > -BAN_VALUE) {
-      return -MATE_VALUE; // 同上
-    }
     hsh.svl += pos.nDistance;
     bMate = 1;
   }
@@ -969,12 +1038,12 @@ static void RecordHash(int nFlag, int vl, int nDepth, int mv) {
   hsh.ucFlag = nFlag;
   hsh.ucDepth = nDepth;
   if (vl > WIN_VALUE) {
-    if (mv == 0 && vl <= BAN_VALUE) {
+    if (mv == 0) {
       return; // 可能导致搜索的不稳定性，并且没有最佳着法，立刻退出
     }
     hsh.svl = vl + pos.nDistance;
   } else if (vl < -WIN_VALUE) {
-    if (mv == 0 && vl >= -BAN_VALUE) {
+    if (mv == 0) {
       return; // 同上
     }
     hsh.svl = vl - pos.nDistance;
@@ -1125,12 +1194,12 @@ static int SearchQuiesc(int vlAlpha, int vlBeta) {
 
   // 7. 逐一走这些走法，并进行递归
   for (i = 0; i < nGenMoves; i ++) {
-    if (pos.MakeMove(mvs[i])) {
+    if (pos.MakeMove(mvs[i])) {/*
     	if(pos.RepStatus())
     	{
     		pos.UndoMakeMove();
 			continue;
-		}
+		}*/
       vl = -SearchQuiesc(-vlBeta, -vlAlpha);
       pos.UndoMakeMove();
 
@@ -1156,7 +1225,7 @@ const bool NO_NULL = 1;
 // 零窗口完全搜索例程
 static int SearchCut(int vlBeta, int nDepth, bool bNoNull = false) {
   int nNewDepth, vlBest=-MATE_VALUE, vl;
-  int mvHash, mv;
+  int mvHash, mv, mvBest=0;
   SortStruct MoveSort;
   // 完全搜索例程包括以下几个步骤：
 
@@ -1188,12 +1257,12 @@ MoveSort.Init(mvHash);
   // 8. 按照"MoveSortStruct::NextFull()"例程的着法顺序逐一搜索；
   while ((mv = MoveSort.Next()) != 0) {
     if (pos.MakeMove(mv)) {
-
+/*
     	if(pos.RepStatus())
     	{
     		pos.UndoMakeMove();
 			continue;
-		}
+		}*/
       // 9. 尝试选择性延伸；
       nNewDepth = nDepth - 1;
 
@@ -1205,21 +1274,24 @@ MoveSort.Init(mvHash);
       if (vl > vlBest) {
         vlBest = vl;
         if (vl >= vlBeta) {
-          RecordHash(HASH_BETA, vlBest, nDepth, mv);
-          SetBestMove(mv, nDepth);
+          RecordHash(HASH_BETA, vlBest, nDepth, mvBest);
+          SetBestMove(mvBest, nDepth);
           return vlBest;
         }
       }
     }
   }
-
-  // 12. 不截断措施。
+  // 5. 所有走法都搜索完了，把最佳走法(不能是Alpha走法)保存到历史表，返回最佳值
   if (vlBest == -MATE_VALUE) {
+    // 如果是杀棋，就根据杀棋步数给出评价
     return pos.nDistance - MATE_VALUE;
-  } else {
-    return vlBest;
   }
+  // 记录到置换表
+  RecordHash(HASH_ALPHA, vlBest, nDepth, 0);
+  return vlBest;
 }
+const int IID_DEPTH = 2;         // 内部迭代加深的深度
+int mvr=0;
 // 超出边界(Fail-Soft)的Alpha-Beta搜索过程
 static int SearchFull(int vlAlpha, int vlBeta, int nDepth, bool bNoNull = 0) {
 	node++;
@@ -1248,6 +1320,16 @@ static int SearchFull(int vlAlpha, int vlBeta, int nDepth, bool bNoNull = 0) {
     }
   }
 
+  // 6. 内部迭代加深启发；
+  if (nDepth > IID_DEPTH && mvHash == 0) {
+    vl = SearchFull(vlAlpha, vlBeta, nDepth / 2);
+    if (vl <= vlAlpha) {
+      vl = SearchFull(-MATE_VALUE, vlBeta, nDepth / 2);
+    }
+    mvHash = mvr;
+  }
+
+
   // 2. 初始化最佳值和最佳走法
   nHashFlag = HASH_ALPHA;
   vlBest = -MATE_VALUE; // 这样可以知道，是否一个走法都没走过(杀棋)
@@ -1260,11 +1342,12 @@ static int SearchFull(int vlAlpha, int vlBeta, int nDepth, bool bNoNull = 0) {
   // 4. 逐一走这些走法，并进行递归
   while ((mv = Sort.Next()) != 0) {
     if (pos.MakeMove(mv)) {
+    	/*
     	if(pos.RepStatus())
     	{
     		pos.UndoMakeMove();
 			continue;
-		}
+		}*/
       // 将军延伸
       nNewDepth = nDepth-1;
       // PVS
@@ -1302,6 +1385,7 @@ static int SearchFull(int vlAlpha, int vlBeta, int nDepth, bool bNoNull = 0) {
   // 记录到置换表
   RecordHash(nHashFlag, vlBest, nDepth, mvBest);
   if (mvBest != 0) {
+  	mvr=mvBest;
     // 如果不是Alpha走法，就将最佳走法保存到历史表
     SetBestMove(mvBest, nDepth);
   }
@@ -1510,12 +1594,12 @@ static int ClickSquare(int sq) {
           printf("祝贺你取得胜利！");
           Xqwl.bGameOver = 1;
           return 1;
-        } else {
+        } else {/*
         	if(pos.RepStatus())
         	{
         		pos.UndoMakeMove();
         		can=0; 
-			}
+			}*/
           return 0;
           //ResponseMove();
         }
@@ -1545,8 +1629,8 @@ int main()
 	while(a!='E'&&a!='e')
 	{
 		system("cls");
-		system("title 野兽争霸斗兽棋AI(V1.32) QQ:403809264");
-		printf("野兽争霸斗兽棋AI V1.32\n");
+		system("title 野兽争霸斗兽棋AI(V1.34) QQ:403809264");
+		printf("野兽争霸斗兽棋AI V1.34\n");
 		if(fenxi) printf("请选择功能：\nA  我当红棋\nB  我当黑棋\nC  双人对战\nD  电脑对战\nE  退出\nF  设置电脑时间(%d毫秒)\nG  设置计算深度(%d层)\nH  隐藏分析\n",t2,depth);
 		else printf("请选择功能：\nA  我当红棋\nB  我当黑棋\nC  双人对战\nD  电脑对战\nE  退出\nF  设置电脑时间(%d毫秒)\nG  设置计算深度(%d层)\nH  显示分析\n",t2,depth);
 		if(Xqwl.bFlipped) printf("I  翻转棋盘(目前红方在左)\n");
