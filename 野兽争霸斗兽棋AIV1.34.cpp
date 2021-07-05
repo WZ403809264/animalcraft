@@ -532,8 +532,9 @@ struct PositionStruct {
   bool sdPlayer;                   // 轮到谁走，0=红方，1=黑方
   int ucpcSquares[256];            // 棋盘上的棋子
   int vlWhite, vlBlack;            // 红、黑双方的子力价值
-  int nDistance, nMoveNum;         // 距离根节点的步数，历史走法数
+  int nDistance, nMoveNum,nMoveNum2;         // 距离根节点的步数，历史走法数
   MoveStruct mvsList[MAX_MOVES];   // 历史走法信息列表
+  MoveStruct mvsList2[MAX_MOVES];   // 历史走法信息列表
   ZobristStruct zobr;              // Zobrist
   bool CanJump(int src,int dst)
   {
@@ -599,6 +600,10 @@ struct PositionStruct {
     mvsList[0].Set(0, 0,0);
     nMoveNum = 1;
   }
+    void SetIrrev2(void) {           // 清空(初始化)历史走法信息
+    mvsList2[0].Set(0, 0,0);
+    nMoveNum2 = 1;
+  }
   void Startup(void);             // 初始化棋盘
   void ChangeSide(void) {         // 交换走子方
     sdPlayer = 1 - sdPlayer;
@@ -638,18 +643,22 @@ struct PositionStruct {
   void UndoMakeMove(void) {                   // 撤消走一步棋
     nDistance --;
     nMoveNum --;
+    nMoveNum2 --;
     ChangeSide();
     UndoMovePiece(mvsList[nMoveNum].wmv, mvsList[nMoveNum].ucpcCaptured);
   }
   void NullMove(void) {                       // 走一步空步
     ChangeSide();
     mvsList[nMoveNum].Set(0, 0,0);
+    mvsList2[nMoveNum].Set(0, 0,0);
     nMoveNum ++;
+    nMoveNum2 ++;
     nDistance ++;
   }
   void UndoNullMove(void) {                   // 撤消走一步空步
     nDistance --;
     nMoveNum --;
+    nMoveNum2 --;
     ChangeSide();
   }
   // 生成所有走法，如果"bCapture"为"1"则只生成吃子走法
@@ -718,7 +727,9 @@ bool PositionStruct::MakeMove(int mv) {
   pcCaptured = MovePiece(mv);
   ChangeSide();
   mvsList[nMoveNum].Set(mv, pcCaptured,ucpcSquares[DST(mv)]);
+  mvsList2[nMoveNum].Set(mv, pcCaptured,ucpcSquares[DST(mv)]);
   nMoveNum ++;
+  nMoveNum2 ++;
   nDistance ++;
   return 1;
 }
@@ -1194,12 +1205,12 @@ static int SearchQuiesc(int vlAlpha, int vlBeta) {
 
   // 7. 逐一走这些走法，并进行递归
   for (i = 0; i < nGenMoves; i ++) {
-    if (pos.MakeMove(mvs[i])) {/*
+    if (pos.MakeMove(mvs[i])) {
     	if(pos.RepStatus())
     	{
     		pos.UndoMakeMove();
 			continue;
-		}*/
+		}
       vl = -SearchQuiesc(-vlBeta, -vlAlpha);
       pos.UndoMakeMove();
 
@@ -1257,12 +1268,12 @@ MoveSort.Init(mvHash);
   // 8. 按照"MoveSortStruct::NextFull()"例程的着法顺序逐一搜索；
   while ((mv = MoveSort.Next()) != 0) {
     if (pos.MakeMove(mv)) {
-/*
+
     	if(pos.RepStatus())
     	{
     		pos.UndoMakeMove();
 			continue;
-		}*/
+		}
       // 9. 尝试选择性延伸；
       nNewDepth = nDepth - 1;
 
@@ -1342,12 +1353,12 @@ static int SearchFull(int vlAlpha, int vlBeta, int nDepth, bool bNoNull = 0) {
   // 4. 逐一走这些走法，并进行递归
   while ((mv = Sort.Next()) != 0) {
     if (pos.MakeMove(mv)) {
-    	/*
+    	
     	if(pos.RepStatus())
     	{
     		pos.UndoMakeMove();
 			continue;
-		}*/
+		}
       // 将军延伸
       nNewDepth = nDepth-1;
       // PVS
@@ -1458,10 +1469,10 @@ static int SearchRoot(int nDepth) {
       pos.UndoMakeMove();
       if (vl > vlBest) {
         vlBest = vl;
-	    Search.mvResult = mv;
+	    Search.mvResult = mv;/*
         if (vlBest > -WIN_VALUE && vlBest < WIN_VALUE) {
           vlBest += (rand() & RANDOM_MASK) - (rand() & RANDOM_MASK);
-        }
+        }*/
       }
     }
     
@@ -1557,15 +1568,33 @@ static int ResponseMove(void) {
 	Xqwl.bGameOver = 1;
 	return 2;
   }else {
-  	
         	if(pos.RepStatus())
         	{
-          printf("祝贺你取得胜利！");
 				DrawBoard();
+          printf("祝贺你取得胜利！");
           Xqwl.bGameOver = 1;
           return 2;
 			}
-  return 0;
+			else
+			{
+  	          if(ranghu&&(pos.nMoveNum+1)/2>=201)
+  	          {
+				  DrawBoard();
+		          if(player[1]) printf("请再接再厉！");
+		          else printf("祝贺你取得胜利！");
+		          Xqwl.bGameOver = 1;
+		          return 2;
+			  }
+			  else if((pos.nMoveNum2+1)/2>=201)
+  	          {
+				  DrawBoard();
+				  printf("超过自然限着作和！");
+		          Xqwl.bGameOver = 1;
+		          return 2;
+			  }
+			  if(pos.Captured()) pos.SetIrrev2();
+ 				 return 0;
+			}
   }
 }
 bool can=1;
@@ -1594,12 +1623,31 @@ static int ClickSquare(int sq) {
           printf("祝贺你取得胜利！");
           Xqwl.bGameOver = 1;
           return 1;
-        } else {/*
+        } else {
+        	
+  	          if(ranghu&&(pos.nMoveNum+1)/2>=201)
+  	          {
+				  DrawBoard();
+		          if(player[1]) printf("请再接再厉！");
+		          else printf("祝贺你取得胜利！");
+		          Xqwl.bGameOver = 1;
+		          return 2;
+			  }  
+			  else if((pos.nMoveNum2+1)/2>=201)
+  	          {
+				  DrawBoard();
+				  printf("超过自然限着作和！");
+		          Xqwl.bGameOver = 1;
+		          return 2;
+			  }
+		
+		/*
         	if(pos.RepStatus())
         	{
         		pos.UndoMakeMove();
         		can=0; 
 			}*/
+			if(pos.Captured()) pos.SetIrrev2();
           return 0;
           //ResponseMove();
         }
