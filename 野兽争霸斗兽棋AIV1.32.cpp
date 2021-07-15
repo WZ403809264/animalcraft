@@ -874,12 +874,12 @@ bool PositionStruct::RepWuSong(void) const {
 bool PositionStruct::RepStatus(void) const {
 	if(RepWuLai())
 	{
-		printf("违例：无赖循环\n");
+		//printf("违例：无赖循环\n");
 		return 1;
 	}
 	if(RepWuSong())
 	{
-		printf("违例：长捉\n");
+		//printf("违例：长捉\n");
 		return 1;
 	}
 	return 0;
